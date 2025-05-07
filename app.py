@@ -57,10 +57,171 @@ def login():
 
     return render_template('login.html')
 
+@app.route('/add_customer', methods=['GET', 'POST'])
+@login_required
+def add_customer():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        email = request.form.get('email')
+        phone = request.form.get('phone')
+        address = request.form.get('address')
+
+        try:
+            conn = sqlite3.connect('crm.db')
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO customers (name, email, phone, address)
+                VALUES (?, ?, ?, ?)
+            ''', (name, email, phone, address))
+            conn.commit()
+            conn.close()
+            flash('Customer added successfully!', 'success')
+            return redirect(url_for('pm_dashboard'))
+        except sqlite3.IntegrityError:
+            flash('Error: Email already exists.', 'danger')
+        except Exception as e:
+            flash(f'Error adding customer: {str(e)}', 'danger')
+
+    return render_template('add_customer.html')
+
+@app.route('/add_project', methods=['GET', 'POST'])
+@login_required
+def add_project():
+    conn = sqlite3.connect('crm.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, name FROM customers')
+    customers = cursor.fetchall()
+    if request.method == 'POST':
+        customer_id = request.form.get('customer_id')
+        estimate_num = request.form.get('estimate_num')
+        status = request.form.get('status')
+        asphalt_type = request.form.get('asphalt_type')
+        square_footage = request.form.get('square_footage')
+        thickness_inches = request.form.get('thickness_inches')
+        start_date = request.form.get('start_date')
+        due_date = request.form.get('due_date')
+        project_address = request.form.get('project_address')
+        try:
+            cursor.execute('''
+                INSERT INTO projects (customer_id, name, status, start_date, end_date)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (customer_id, estimate_num, status, start_date, due_date))
+            conn.commit()
+            flash('Project added successfully!', 'success')
+            return redirect(url_for('pm_dashboard'))
+        except Exception as e:
+            flash(f'Error adding project: {str(e)}', 'danger')
+        finally:
+            conn.close()
+    return render_template('add_project.html', customers=customers)
+
+
+@app.route('/project/<int:project_id>')
+@login_required
+def project(project_id):
+    conn = sqlite3.connect('crm.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, customer_id, name, start_date, end_date, status FROM projects WHERE id = ?', (project_id,))
+    project = cursor.fetchone()
+    if not project:
+        conn.close()
+        flash('Project not found.', 'danger')
+        return redirect(url_for('pm_dashboard'))
+    cursor.execute('SELECT id, name FROM customers WHERE id = ?', (project[1],))
+    customer = cursor.fetchone()
+    cursor.execute('SELECT id, type, category, amount, description, date FROM project_finances WHERE project_id = ?', (project_id,))
+    finances = cursor.fetchall()
+    cursor.execute('''
+        SELECT t.id, t.description, t.status, t.start_date, t.end_date, t.duration_days, t.hours_spent, u.username
+        FROM tasks t
+        LEFT JOIN users u ON t.assigned_to = u.id
+        WHERE t.project_id = ?
+    ''', (project_id,))
+    tasks = cursor.fetchall()
+    conn.close()
+    project_dict = {
+        'id': project[0],
+        'customer_id': project[1],
+        'name': project[2],
+        'start_date': project[3],
+        'end_date': project[4],
+        'status': project[5]
+    }
+    customer_dict = {'id': customer[0], 'name': customer[1]}
+    finances_list = [{'id': f[0], 'type': f[1], 'category': f[2], 'amount': f[3], 'description': f[4], 'date': f[5]} for f in finances]
+    tasks_list = [{
+        'id': t[0],
+        'title': t[1],
+        'status': t[2],
+        'start_date': t[3],
+        'due_date': t[4],
+        'duration_days': t[5],
+        'hours_spent': t[6],
+        'assignee_username': t[7]
+    } for t in tasks]
+    return render_template('project.html', project=project_dict, customer=customer_dict, finances=finances_list, tasks=tasks_list)
+
+@app.route('/project/<int:project_id>/add_finance', methods=['POST'])
+@login_required
+def add_finance(project_id):
+    type = request.form.get('type')
+    category = request.form.get('category')
+    amount = request.form.get('amount')
+    description = request.form.get('description')
+    date = request.form.get('date')
+    try:
+        conn = sqlite3.connect('crm.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO project_finances (project_id, type, category, amount, description, date)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (project_id, type, category, amount, description, date))
+        conn.commit()
+        conn.close()
+        flash('Finance entry added successfully!', 'success')
+    except Exception as e:
+        flash(f'Error adding finance entry: {str(e)}', 'danger')
+    return redirect(url_for('project', project_id=project_id))
+
+@app.route('/project/<int:project_id>/add_task', methods=['GET', 'POST'])
+@login_required
+def add_task(project_id):
+    conn = sqlite3.connect('crm.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, username FROM users')
+    users = [{'id': u[0], 'username': u[1]} for u in cursor.fetchall()]
+    if request.method == 'POST':
+        title = request.form.get('title')
+        assignee = request.form.get('assignee') or None
+        status = request.form.get('status')
+        start_date = request.form.get('start_date') or None
+        due_date = request.form.get('due_date') or None
+        duration_days = request.form.get('duration_days') or None
+        hours_spent = request.form.get('hours_spent') or None
+        try:
+            cursor.execute('''
+                INSERT INTO tasks (project_id, description, assigned_to, status, start_date, end_date, duration_days, hours_spent)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (project_id, title, assignee, status, start_date, due_date, duration_days, hours_spent))
+            conn.commit()
+            flash('Task added successfully!', 'success')
+            return redirect(url_for('project', project_id=project_id))
+        except Exception as e:
+            flash(f'Error adding task: {str(e)}', 'danger')
+        finally:
+            conn.close()
+    conn.close()
+    return render_template('add_task.html', users=users, project_id=project_id)
+
 @app.route('/pm')
 @login_required
 def pm_dashboard():
-    return render_template('dashboard.html')
+    conn = sqlite3.connect('crm.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, name, start_date, end_date, status FROM projects')
+    projects = [{'id': p[0], 'name': p[1], 'start_date': p[2], 'end_date': p[3], 'status': p[4]} for p in cursor.fetchall()]
+    conn.close()
+    return render_template('dashboard.html', projects=projects)
 
 @app.route('/logout')
 @login_required

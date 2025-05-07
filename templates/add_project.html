@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LG Asphalt - Add Project</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #F5F5F5; color: #333333; }
+        .navbar { background-color: #000000; }
+        .navbar-brand, .nav-link { color: #FFC107 !important; }
+        .nav-link:hover { color: #FFA000 !important; }
+        .container { margin-top: 30px; max-width: 600px; }
+        .btn-primary { background-color: #FFC107; border-color: #FFC107; color: #000000; }
+        .btn-primary:hover { background-color: #FFA000; border-color: #FFA000; }
+        h1 { color: #000000; }
+        .form-container { background-color: #FFFFFF; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('pm_dashboard') }}">LG Asphalt Admin</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    <div class="container">
+        <h1>Add New Project</h1>
+        <div class="form-container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}" role="alert">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            <form method="post">
+                <div class="mb-3">
+                    <label for="customer_id" class="form-label">Customer</label>
+                    <select class="form-control" id="customer_id" name="customer_id" required>
+                        {% for customer in customers %}
+                            <option value="{{ customer[0] }}">{{ customer[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="estimate_num" class="form-label">Estimate Number</label>
+                    <input type="text" class="form-control" id="estimate_num" name="estimate_num" required>
+                </div>
+                <div class="mb-3">
+                    <label for="status" class="form-label">Status</label>
+                    <select class="form-control" id="status" name="status" required>
+                        <option value="planned">Planned</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="asphalt_type" class="form-label">Asphalt Type</label>
+                    <input type="text" class="form-control" id="asphalt_type" name="asphalt_type">
+                </div>
+                <div class="mb-3">
+                    <label for="square_footage" class="form-label">Square Footage</label>
+                    <input type="number" class="form-control" id="square_footage" name="square_footage" step="0.01">
+                </div>
+                <div class="mb-3">
+                    <label for="thickness_inches" class="form-label">Thickness (Inches)</label>
+                    <input type="number" class="form-control" id="thickness_inches" name="thickness_inches" step="0.01">
+                </div>
+                <div class="mb-3">
+                    <label for="start_date" class="form-label">Start Date</label>
+                    <input type="date" class="form-control" id="start_date" name="start_date">
+                </div>
+                <div class="mb-3">
+                    <label for="due_date" class="form-label">Due Date</label>
+                    <input type="date" class="form-control" id="due_date" name="due_date">
+                </div>
+                <div class="mb-3">
+                    <label for="project_address" class="form-label">Project Address</label>
+                    <textarea class="form-control" id="project_address" name="project_address" rows="4"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Add Project</button>
+            </form>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

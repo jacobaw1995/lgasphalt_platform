@@ -45,10 +45,12 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id INTEGER NOT NULL,
             description TEXT NOT NULL,
-            assigned_to INTEGER,  -- References users(id)
+            assigned_to INTEGER,
             start_date TEXT,
             end_date TEXT,
-            status TEXT,  -- e.g., 'pending', 'in_progress', 'completed'
+            status TEXT,
+            duration_days INTEGER,
+            hours_spent REAL,
             FOREIGN KEY (project_id) REFERENCES projects(id),
             FOREIGN KEY (assigned_to) REFERENCES users(id)
         )
