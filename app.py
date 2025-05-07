@@ -60,7 +60,7 @@ def login():
 @app.route('/pm')
 @login_required
 def pm_dashboard():
-    return 'Welcome to the PM Dashboard (Admin Access)'
+    return render_template('dashboard.html')
 
 @app.route('/logout')
 @login_required
