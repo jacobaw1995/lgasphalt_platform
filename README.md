@@ -1,0 +1,2 @@
+# LG Asphalt Project Management Platform
+A web-based platform for managing residential asphalt projects, including project tracking, customer portals, finance management, and asphalt-specific workflows.
