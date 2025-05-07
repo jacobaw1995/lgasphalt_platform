@@ -50,7 +50,7 @@ def load_user(user_id):
         conn.close()
         if user_data:
             user = User(id=user_data[0], username=user_data[1], role=user_data[2])
-            print(f"Loaded admin user: id={user.id}, username={user.username}, is_customer={user._is_customer}")
+            print(f"Loaded admin user: id={user.id}, username={user.username}, is_customer={user._is_customer}, role={user.role}")
             return user
     elif user_id.startswith('customer_'):
         customer_id = user_id.replace('customer_', '')
@@ -86,9 +86,10 @@ def login():
         if user_data and bcrypt.check_password_hash(user_data[2], password):
             user = User(id=user_data[0], username=user_data[1], role=user_data[3])
             login_user(user)
-            print(f"Admin logged in: id={user.id}, username={user.username}")
+            print(f"Admin logged in: id={user.id}, username={user.username}, role={user.role}, is_customer={user._is_customer}")
             return redirect(url_for('pm_dashboard'))
         else:
+            print(f"Admin login failed: username={username}")
             return render_template('login.html', error='Invalid username or password')
     return render_template('login.html')
 
@@ -105,9 +106,10 @@ def customer_login():
         if customer_data and bcrypt.check_password_hash(customer_data[3], password):
             customer = Customer(id=customer_data[0], name=customer_data[1], email=customer_data[2])
             login_user(customer)
-            print(f"Customer logged in: id={customer.id}, email={customer.email}")
+            print(f"Customer logged in: id={customer.id}, email={customer.email}, is_customer={customer._is_customer}")
             return redirect(url_for('customer_portal'))
         else:
+            print(f"Customer login failed: email={email}")
             flash('Invalid email or password.', 'danger')
             return redirect(url_for('customer_login'))
     return render_template('customer_portal.html')
@@ -124,11 +126,17 @@ def customer_portal():
     cursor.execute('SELECT id, name, status, start_date, end_date FROM projects WHERE customer_id = ?', (current_user.id,))
     projects = [{'id': p[0], 'name': p[1], 'status': p[2], 'start_date': p[3], 'end_date': p[4]} for p in cursor.fetchall()]
     
-    selected_project_id = request.form.get('project_id') or (projects[0]['id'] if projects else None)
+    selected_project_id = request.form.get('project_id')
+    if selected_project_id:
+        selected_project_id = int(selected_project_id)
+    else:
+        selected_project_id = projects[0]['id'] if projects else None
+    
     photos = []
     if selected_project_id:
         cursor.execute('SELECT id, filename, description, upload_date FROM photos WHERE project_id = ?', (selected_project_id,))
         photos = [{'id': p[0], 'filename': p[1], 'description': p[2], 'upload_date': p[3]} for p in cursor.fetchall()]
+        print(f"Customer portal: user_id={current_user.id}, selected_project_id={selected_project_id}, photos_fetched={len(photos)}")
     
     conn.close()
     return render_template('customer_portal.html', projects=projects, photos=photos, selected_project_id=selected_project_id)
@@ -308,22 +316,36 @@ def add_task(project_id):
 def upload_photo(project_id):
     # Debug user state
     user_id = getattr(current_user, 'id', None)
+    is_authenticated = current_user.is_authenticated
     is_customer = getattr(current_user, '_is_customer', False)
     role = getattr(current_user, 'role', 'unknown')
-    print(f"Upload photo access: user_id={user_id}, is_customer={is_customer}, role={role}")
+    print(f"Upload photo access: user_id={user_id}, is_authenticated={is_authenticated}, is_customer={is_customer}, role={role}")
 
-    # Explicitly check user role from database if needed
-    if user_id and not is_customer:
-        conn = sqlite3.connect('crm.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
-        user_data = cursor.fetchone()
-        conn.close()
-        if user_data and user_data[0] != 'admin':
+    # Check if user is authenticated
+    if not is_authenticated:
+        print("User not authenticated, redirecting to login")
+        flash('Please log in to access this page.', 'danger')
+        return redirect(url_for('login'))
+
+    # Verify admin role from database
+    conn = sqlite3.connect('crm.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
+    user_data = cursor.fetchone()
+    if user_data:
+        role = user_data[0]
+        print(f"Database role check: user_id={user_id}, role={role}")
+        if role != 'admin':
             print(f"User {user_id} is not admin, redirecting to pm_dashboard")
             flash('Access restricted to admins.', 'danger')
             return redirect(url_for('pm_dashboard'))
+    else:
+        print(f"No user found in database for user_id={user_id}, redirecting to login")
+        flash('User not found. Please log in again.', 'danger')
+        return redirect(url_for('login'))
+    conn.close()
 
+    # Additional customer check
     if is_customer:
         print(f"User {user_id} is customer, redirecting to customer_portal")
         flash('Access restricted to admins.', 'danger')
@@ -363,9 +385,11 @@ def upload_photo(project_id):
                 ''', (project_id, unique_filename, description, upload_date))
                 conn.commit()
                 conn.close()
+                print(f"Photo inserted: project_id={project_id}, filename={unique_filename}")
                 flash('Photo uploaded successfully!', 'success')
                 return redirect(url_for('project', project_id=project_id))
             except Exception as e:
+                print(f"Error inserting photo: {str(e)}")
                 flash(f'Error uploading photo: {str(e)}', 'danger')
         else:
             flash('Invalid file type. Allowed: png, jpg, jpeg, gif.', 'danger')
