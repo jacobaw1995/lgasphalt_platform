@@ -1,4 +1,7 @@
 import sqlite3
+from flask_bcrypt import Bcrypt
+
+bcrypt = Bcrypt()
 
 def init_db():
     # Connect to (or create) crm.db
@@ -23,6 +26,8 @@ def init_db():
             email TEXT NOT NULL UNIQUE,
             phone TEXT,
             address TEXT
+            password TEXT NOT NULL
+
         )
     ''')
 

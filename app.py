@@ -1,5 +1,5 @@
 from flask import Flask, request, redirect, url_for, flash, render_template
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_bcrypt import Bcrypt
 import sqlite3
 
@@ -12,23 +12,49 @@ bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# User class for Flask-Login
+# User class for Flask-Login (Admins)
 class User(UserMixin):
     def __init__(self, id, username, role):
         self.id = id
         self.username = username
         self.role = role
+        self._is_customer = False
+
+    def get_id(self):
+        return f"user_{self.id}"
+
+# Customer class for Flask-Login
+class Customer(UserMixin):
+    def __init__(self, id, name, email):
+        self.id = id
+        self.name = name
+        self.email = email
+        self._is_customer = True
+
+    def get_id(self):
+        return f"customer_{self.id}"
 
 # Load user for Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
-    conn = sqlite3.connect('crm.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, username, role FROM users WHERE id = ?', (user_id,))
-    user_data = cursor.fetchone()
-    conn.close()
-    if user_data:
-        return User(id=user_data[0], username=user_data[1], role=user_data[2])
+    if user_id.startswith('user_'):
+        user_id = user_id.replace('user_', '')
+        conn = sqlite3.connect('crm.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, username, role FROM users WHERE id = ?', (user_id,))
+        user_data = cursor.fetchone()
+        conn.close()
+        if user_data:
+            return User(id=user_data[0], username=user_data[1], role=user_data[2])
+    elif user_id.startswith('customer_'):
+        customer_id = user_id.replace('customer_', '')
+        conn = sqlite3.connect('crm.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, name, email FROM customers WHERE id = ?', (customer_id,))
+        customer_data = cursor.fetchone()
+        conn.close()
+        if customer_data:
+            return Customer(id=customer_data[0], name=customer_data[1], email=customer_data[2])
     return None
 
 @app.route('/')
@@ -41,7 +67,6 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         
-        # Query user
         conn = sqlite3.connect('crm.db')
         cursor = conn.cursor()
         cursor.execute('SELECT id, username, password, role FROM users WHERE username = ?', (username,))
@@ -57,6 +82,50 @@ def login():
 
     return render_template('login.html')
 
+@app.route('/customer_login', methods=['GET', 'POST'])
+def customer_login():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        conn = sqlite3.connect('crm.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, name, email, password FROM customers WHERE email = ?', (email,))
+        customer_data = cursor.fetchone()
+        conn.close()
+
+        if customer_data and bcrypt.check_password_hash(customer_data[3], password):
+            customer = Customer(id=customer_data[0], name=customer_data[1], email=customer_data[2])
+            login_user(customer)
+            return redirect(url_for('customer_portal'))
+        else:
+            flash('Invalid email or password.', 'danger')
+            return redirect(url_for('customer_login'))
+
+    return render_template('customer_portal.html')
+
+@app.route('/customer_portal')
+@login_required
+def customer_portal():
+    if not hasattr(current_user, '_is_customer') or not current_user._is_customer:
+        flash('Access restricted to customers.', 'danger')
+        return redirect(url_for('login'))
+    
+    conn = sqlite3.connect('crm.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, name, status, start_date, end_date FROM projects WHERE customer_id = ?', (current_user.id,))
+    projects = [{'id': p[0], 'name': p[1], 'status': p[2], 'start_date': p[3], 'end_date': p[4]} for p in cursor.fetchall()]
+    conn.close()
+    
+    return render_template('customer_portal.html', projects=projects)
+
+@app.route('/customer_logout')
+@login_required
+def customer_logout():
+    logout_user()
+    flash('Logged out successfully.', 'success')
+    return redirect(url_for('customer_login'))
+
 @app.route('/add_customer', methods=['GET', 'POST'])
 @login_required
 def add_customer():
@@ -65,14 +134,15 @@ def add_customer():
         email = request.form.get('email')
         phone = request.form.get('phone')
         address = request.form.get('address')
+        password = bcrypt.generate_password_hash('default123').decode('utf-8')  # Default password
 
         try:
             conn = sqlite3.connect('crm.db')
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO customers (name, email, phone, address)
-                VALUES (?, ?, ?, ?)
-            ''', (name, email, phone, address))
+                INSERT INTO customers (name, email, phone, address, password)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (name, email, phone, address, password))
             conn.commit()
             conn.close()
             flash('Customer added successfully!', 'success')
@@ -114,7 +184,6 @@ def add_project():
         finally:
             conn.close()
     return render_template('add_project.html', customers=customers)
-
 
 @app.route('/project/<int:project_id>')
 @login_required
@@ -227,7 +296,7 @@ def pm_dashboard():
 @login_required
 def logout():
     logout_user()
-    return 'Logged out successfully'
+    return redirect(url_for('login'))
 
 if __name__ == '__main__':
     app.run(debug=True)
