@@ -15,6 +15,7 @@
         .btn-primary:hover { background-color: #FFA000; border-color: #FFA000; }
         h1, h2 { color: #000000; }
         .card { background-color: #FFFFFF; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
+        .photo-img { max-width: 100%; height: auto; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -159,8 +160,20 @@
         <div class="card mb-4">
             <div class="card-body">
                 <h2>Photos</h2>
-                <p>Photos placeholder (to be implemented).</p>
-                <a href="#" class="btn btn-primary">Upload Photo</a>
+                <a href="{{ url_for('upload_photo', project_id=project.id) }}" class="btn btn-primary mb-3">Upload Photo</a>
+                {% if photos %}
+                    <div class="row">
+                        {% for photo in photos %}
+                            <div class="col-md-4 mb-3">
+                                <img src="{{ url_for('uploaded_file', filename=photo.filename) }}" class="photo-img" alt="{{ photo.description }}">
+                                <p>{{ photo.description }}</p>
+                                <p><small>Uploaded: {{ photo.upload_date }}</small></p>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p>No photos uploaded yet.</p>
+                {% endif %}
             </div>
         </div>
     </div>

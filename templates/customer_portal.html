@@ -19,9 +19,10 @@
             padding: 20px; 
             border-radius: 8px; 
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); 
-            max-width: 600px; 
+            max-width: 800px; 
             margin: 0 auto; 
         }
+        .photo-img { max-width: 100%; height: auto; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -72,6 +73,16 @@
                 <h1>Welcome, {{ current_user.name }}</h1>
                 <h2>Your Projects</h2>
                 {% if projects %}
+                    <form method="post" action="{{ url_for('customer_portal') }}">
+                        <div class="mb-3">
+                            <label for="project_id" class="form-label">Select Project</label>
+                            <select class="form-control" id="project_id" name="project_id" onchange="this.form.submit()">
+                                {% for project in projects %}
+                                    <option value="{{ project.id }}" {% if project.id == selected_project_id %}selected{% endif %}>{{ project.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </form>
                     <table class="table">
                         <thead>
                             <tr>
@@ -83,15 +94,31 @@
                         </thead>
                         <tbody>
                             {% for project in projects %}
-                                <tr>
-                                    <td>{{ project.name }}</td>
-                                    <td>{{ project.status }}</td>
-                                    <td>{{ project.start_date }}</td>
-                                    <td>{{ project.end_date }}</td>
-                                </tr>
+                                {% if project.id == selected_project_id %}
+                                    <tr>
+                                        <td>{{ project.name }}</td>
+                                        <td>{{ project.status }}</td>
+                                        <td>{{ project.start_date }}</td>
+                                        <td>{{ project.end_date }}</td>
+                                    </tr>
+                                {% endif %}
                             {% endfor %}
                         </tbody>
                     </table>
+                    <h2>Project Photos</h2>
+                    {% if photos %}
+                        <div class="row">
+                            {% for photo in photos %}
+                                <div class="col-md-4 mb-3">
+                                    <img src="{{ url_for('uploaded_file', filename=photo.filename) }}" class="photo-img" alt="{{ photo.description }}">
+                                    <p>{{ photo.description }}</p>
+                                    <p><small>Uploaded: {{ photo.upload_date }}</small></p>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p>No photos uploaded for this project.</p>
+                    {% endif %}
                 {% else %}
                     <p>No projects found.</p>
                 {% endif %}
