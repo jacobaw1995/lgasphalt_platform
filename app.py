@@ -3,13 +3,18 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from flask_bcrypt import Bcrypt
 import sqlite3
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
+import requests
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'lg-asphalt-secret-key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///crm.db'
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['UPLOAD_FOLDER'] = 'Uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -69,6 +74,42 @@ def load_user(user_id):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
+def send_email(recipient_email, subject, body):
+    try:
+        # Load email configuration
+        with open('email_config.txt', 'r') as f:
+            config = dict(line.strip().split('=') for line in f if line.strip())
+        sender_email = config['EMAIL_ADDRESS']
+        password = config['EMAIL_PASSWORD']
+
+        # Create the email
+        message = MIMEMultipart()
+        message["From"] = sender_email
+        message["To"] = recipient_email
+        message["Subject"] = subject
+        message.attach(MIMEText(body, "plain"))
+
+        # Send the email via Gmail SMTP
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(sender_email, password)
+            server.sendmail(sender_email, recipient_email, message.as_string())
+        print(f"Email sent successfully to {recipient_email}")
+        return True
+    except Exception as e:
+        print(f"Failed to send email: {str(e)}")
+        flash(f"Failed to send email notification: {str(e)}", "warning")
+        return False
+
+@app.route('/send_test_email')
+def send_test_email():
+    recipient = "jacobaw1995@gmail.com"
+    subject = "Test Email from LG Asphalt Platform"
+    body = "This is a test email from the LG Asphalt Project Management Platform."
+    print(f"Sending test email to {recipient}")
+    send_email(recipient, subject, body)
+    return "Test email sent. Check your inbox."
+
 @app.route('/')
 def home():
     return 'Welcome to LG Asphalt Project Management Platform!'
@@ -125,12 +166,22 @@ def customer_portal():
     cursor = conn.cursor()
     cursor.execute('SELECT id, name, status, start_date, end_date FROM projects WHERE customer_id = ?', (current_user.id,))
     projects = [{'id': p[0], 'name': p[1], 'status': p[2], 'start_date': p[3], 'end_date': p[4]} for p in cursor.fetchall()]
+    print(f"Customer portal: user_id={current_user.id}, projects_fetched={len(projects)}")
     
     selected_project_id = request.form.get('project_id')
     if selected_project_id:
-        selected_project_id = int(selected_project_id)
-    else:
-        selected_project_id = projects[0]['id'] if projects else None
+        try:
+            selected_project_id = int(selected_project_id)
+            cursor.execute('SELECT id FROM projects WHERE id = ? AND customer_id = ?', (selected_project_id, current_user.id))
+            if not cursor.fetchone():
+                selected_project_id = None
+                print(f"Invalid project_id={selected_project_id} for user_id={current_user.id}")
+        except ValueError:
+            selected_project_id = None
+            print(f"Invalid project_id format: {request.form.get('project_id')}")
+    
+    if not selected_project_id and projects:
+        selected_project_id = projects[0]['id']
     
     photos = []
     if selected_project_id:
@@ -217,7 +268,7 @@ def project(project_id=None):
     
     conn = sqlite3.connect('crm.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT id, customer_id, name, start_date, end_date, status FROM projects WHERE id = ?', (project_id,))
+    cursor.execute('SELECT id, customer_id, name, start_date, end_date, status, zip_code FROM projects WHERE id = ?', (project_id,))
     project = cursor.fetchone()
     if not project:
         conn.close()
@@ -236,6 +287,82 @@ def project(project_id=None):
     tasks = cursor.fetchall()
     cursor.execute('SELECT id, filename, description, upload_date FROM photos WHERE project_id = ?', (project_id,))
     photos = [{'id': p[0], 'filename': p[1], 'description': p[2], 'upload_date': p[3]} for p in cursor.fetchall()]
+    
+    # Fetch weather data based on project zip code
+    weather_data = []
+    try:
+        with open('weather_api_key.txt', 'r') as f:
+            api_key = f.read().strip()
+            if not api_key:
+                raise ValueError("API key is empty in weather_api_key.txt")
+        
+        # Get latitude and longitude from zip code using Geocoding API
+        zip_code = project[6]  # zip_code from projects table
+        if not zip_code:
+            raise ValueError(f"No zip code found for project ID {project_id}")
+        
+        geo_params = {
+            'zip': f"{zip_code},US",
+            'appid': api_key
+        }
+        geo_response = requests.get("https://api.openweathermap.org/geo/1.0/zip", params=geo_params)
+        geo_response.raise_for_status()
+        geo_data = geo_response.json()
+        if 'lat' not in geo_data or 'lon' not in geo_data:
+            raise ValueError(f"Geocoding API response missing lat/lon: {geo_data}")
+        lat = geo_data.get('lat')
+        lon = geo_data.get('lon')
+        print(f"Fetched coordinates for zip {zip_code}: lat={lat}, lon={lon}")
+        
+        # Fetch 5-day forecast
+        weather_params = {
+            'lat': lat,
+            'lon': lon,
+            'appid': api_key,
+            'units': 'imperial'  # Fahrenheit
+        }
+        response = requests.get("https://api.openweathermap.org/data/2.5/forecast", params=weather_params)
+        response.raise_for_status()
+        forecast = response.json()
+        if 'list' not in forecast:
+            raise ValueError(f"Forecast API response missing list: {forecast}")
+        
+        # Get the most recent 5 days of forecast data
+        daily_forecasts = {}
+        project_start_date = datetime.strptime(project[3], '%Y-%m-%d')
+        for entry in forecast['list']:
+            entry_date = datetime.fromtimestamp(entry['dt']).date()
+            if entry_date not in daily_forecasts:
+                daily_forecasts[entry_date] = {
+                    'date': entry_date.strftime('%Y-%m-%d'),
+                    'temp': entry['main']['temp'],
+                    'condition': entry['weather'][0]['main']
+                }
+            if len(daily_forecasts) >= 5:
+                break
+        
+        weather_data = list(daily_forecasts.values())
+        print(f"Fetched weather for zip {zip_code}: {len(weather_data)} days")
+        
+        # Check if forecast range covers project start date
+        earliest_forecast_date = min(datetime.strptime(day['date'], '%Y-%m-%d').date() for day in weather_data)
+        latest_forecast_date = max(datetime.strptime(day['date'], '%Y-%m-%d').date() for day in weather_data)
+        if project_start_date.date() > latest_forecast_date:
+            print(f"Weather forecast range {earliest_forecast_date} to {latest_forecast_date} does not cover project start date {project_start_date.date()}; showing most recent 5 days.")
+            flash(f"Weather forecast is for {earliest_forecast_date} to {latest_forecast_date}, as the project start date ({project_start_date.date()}) is beyond the forecast range.", 'info')
+    except FileNotFoundError:
+        print("Failed to fetch weather data: weather_api_key.txt not found")
+        flash('Unable to fetch weather data: API key file missing.', 'warning')
+    except ValueError as ve:
+        print(f"Failed to fetch weather data: {str(ve)}")
+        flash('Unable to fetch weather data: Invalid project zip code or API response.', 'warning')
+    except requests.exceptions.RequestException as re:
+        print(f"Failed to fetch weather data: {str(re)}")
+        flash('Unable to fetch weather data: API request failed.', 'warning')
+    except Exception as e:
+        print(f"Failed to fetch weather data: {str(e)}")
+        flash('Unable to fetch weather data.', 'warning')
+    
     conn.close()
     project_dict = {
         'id': project[0],
@@ -257,7 +384,7 @@ def project(project_id=None):
         'hours_spent': t[6],
         'assignee_username': t[7]
     } for t in tasks]
-    return render_template('project.html', project=project_dict, customer=customer_dict, finances=finances_list, tasks=tasks_list, photos=photos)
+    return render_template('project.html', project=project_dict, customer=customer_dict, finances=finances_list, tasks=tasks_list, photos=photos, weather_data=weather_data)
 
 @app.route('/project/<int:project_id>/add_finance', methods=['POST'])
 @login_required
@@ -296,13 +423,57 @@ def add_task(project_id):
         due_date = request.form.get('due_date') or None
         duration_days = request.form.get('duration_days') or None
         hours_spent = request.form.get('hours_spent') or None
+
+        # Validate dates if provided
+        if start_date and due_date:
+            start = datetime.strptime(start_date, '%Y-%m-%d')
+            end = datetime.strptime(due_date, '%Y-%m-%d')
+            if end < start:
+                flash('Due date cannot be earlier than start date.', 'danger')
+                conn.close()
+                return render_template('add_task.html', users=users, project_id=project_id)
+
         try:
             cursor.execute('''
                 INSERT INTO tasks (project_id, description, assigned_to, status, start_date, end_date, duration_days, hours_spent)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (project_id, title, assignee, status, start_date, due_date, duration_days, hours_spent))
             conn.commit()
-            flash('Task added successfully!', 'success')
+
+            # Send email notification to assignee if assigned
+            if assignee:
+                cursor.execute('SELECT username, email FROM users WHERE id = ?', (assignee,))
+                assignee_data = cursor.fetchone()
+                if assignee_data:
+                    username, email = assignee_data
+                    if email:
+                        cursor.execute('SELECT name FROM projects WHERE id = ?', (project_id,))
+                        project_name = cursor.fetchone()[0]
+                        subject = f"New Task Assigned: {title}"
+                        body = f"You have been assigned a new task in the LG Asphalt Project Management Platform.\n\n" \
+                               f"Project: {project_name}\n" \
+                               f"Task: {title}\n" \
+                               f"Status: {status}\n" \
+                               f"Start Date: {start_date or 'Not specified'}\n" \
+                               f"Due Date: {due_date or 'Not specified'}\n" \
+                               f"Duration: {duration_days or 'Not specified'} days\n" \
+                               f"Hours Spent: {hours_spent or '0'} hours\n\n" \
+                               f"Please log in to the platform to view details: http://127.0.0.1:5000/login"
+                        print(f"Sending email to {email} for task {title}")
+                        if send_email(email, subject, body):
+                            flash('Task added successfully!', 'success')
+                        else:
+                            flash('Task added successfully, but failed to send email notification.', 'success')
+                    else:
+                        print(f"Assignee {username} (ID {assignee}) has no email address")
+                        flash('Task added successfully, but assignee has no email for notification.', 'success')
+                else:
+                    print(f"No user found for assignee ID {assignee}")
+                    flash('Task added successfully, but assignee not found for email notification.', 'success')
+            else:
+                print("No assignee selected for task")
+                flash('Task added successfully, but no assignee selected for email notification.', 'success')
+
             return redirect(url_for('project', project_id=project_id))
         except Exception as e:
             flash(f'Error adding task: {str(e)}', 'danger')
@@ -314,20 +485,17 @@ def add_task(project_id):
 @app.route('/project/<int:project_id>/upload_photo', methods=['GET', 'POST'])
 @login_required
 def upload_photo(project_id):
-    # Debug user state
     user_id = getattr(current_user, 'id', None)
     is_authenticated = current_user.is_authenticated
     is_customer = getattr(current_user, '_is_customer', False)
     role = getattr(current_user, 'role', 'unknown')
     print(f"Upload photo access: user_id={user_id}, is_authenticated={is_authenticated}, is_customer={is_customer}, role={role}")
 
-    # Check if user is authenticated
     if not is_authenticated:
         print("User not authenticated, redirecting to login")
         flash('Please log in to access this page.', 'danger')
         return redirect(url_for('login'))
 
-    # Verify admin role from database
     conn = sqlite3.connect('crm.db')
     cursor = conn.cursor()
     cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
@@ -345,13 +513,11 @@ def upload_photo(project_id):
         return redirect(url_for('login'))
     conn.close()
 
-    # Additional customer check
     if is_customer:
         print(f"User {user_id} is customer, redirecting to customer_portal")
         flash('Access restricted to admins.', 'danger')
         return redirect(url_for('customer_portal'))
 
-    # Verify project exists
     conn = sqlite3.connect('crm.db')
     cursor = conn.cursor()
     cursor.execute('SELECT id FROM projects WHERE id = ?', (project_id,))

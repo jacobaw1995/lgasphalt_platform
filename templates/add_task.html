@@ -10,11 +10,11 @@
         .navbar { background-color: #000000; }
         .navbar-brand, .nav-link { color: #FFC107 !important; }
         .nav-link:hover { color: #FFA000 !important; }
-        .container { margin-top: 30px; max-width: 600px; }
+        .container { margin-top: 30px; }
         .btn-primary { background-color: #FFC107; border-color: #FFC107; color: #000000; }
         .btn-primary:hover { background-color: #FFA000; border-color: #FFA000; }
         h1 { color: #000000; }
-        .form-container { background-color: #FFFFFF; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
+        .card { background-color: #FFFFFF; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
     </style>
 </head>
 <body>
@@ -34,57 +34,60 @@
         </div>
     </nav>
     <div class="container">
-        <h1>Add New Task</h1>
-        <div class="form-container">
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category }}" role="alert">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-            <form method="post">
-                <div class="mb-3">
-                    <label for="title" class="form-label">Task Title</label>
-                    <input type="text" class="form-control" id="title" name="title" required>
-                </div>
-                <div class="mb-3">
-                    <label for="assignee" class="form-label">Assignee</label>
-                    <select class="form-control" id="assignee" name="assignee">
-                        <option value="">Unassigned</option>
-                        {% for user in users %}
-                            <option value="{{ user.id }}">{{ user.username }}</option>
+        <h1>Add Task for Project ID: {{ project_id }}</h1>
+        <div class="card">
+            <div class="card-body">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}" role="alert">
+                                {{ message }}
+                            </div>
                         {% endfor %}
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label for="status" class="form-label">Status</label>
-                    <select class="form-control" id="status" name="status" required>
-                        <option value="pending">Pending</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="completed">Completed</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label for="start_date" class="form-label">Start Date</label>
-                    <input type="date" class="form-control" id="start_date" name="start_date">
-                </div>
-                <div class="mb-3">
-                    <label for="due_date" class="form-label">Due Date</label>
-                    <input type="date" class="form-control" id="due_date" name="due_date">
-                </div>
-                <div class="mb-3">
-                    <label for="duration_days" class="form-label">Duration (Days)</label>
-                    <input type="number" class="form-control" id="duration_days" name="duration_days" step="1">
-                </div>
-                <div class="mb-3">
-                    <label for="hours_spent" class="form-label">Hours Spent</label>
-                    <input type="number" class="form-control" id="hours_spent" name="hours_spent" step="0.1">
-                </div>
-                <button type="submit" class="btn btn-primary w-100">Add Task</button>
-            </form>
+                    {% endif %}
+                {% endwith %}
+                <form method="post">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Task Title</label>
+                        <input type="text" class="form-control" id="title" name="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="assignee" class="form-label">Assignee</label>
+                        <select class="form-control" id="assignee" name="assignee">
+                            <option value="">None</option>
+                            {% for user in users %}
+                                <option value="{{ user.id }}">{{ user.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="status" class="form-label">Status</label>
+                        <select class="form-control" id="status" name="status" required>
+                            <option value="planned">Planned</option>
+                            <option value="pending">Pending</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="start_date" class="form-label">Start Date</label>
+                        <input type="date" class="form-control" id="start_date" name="start_date">
+                    </div>
+                    <div class="mb-3">
+                        <label for="due_date" class="form-label">Due Date</label>
+                        <input type="date" class="form-control" id="due_date" name="due_date">
+                    </div>
+                    <div class="mb-3">
+                        <label for="duration_days" class="form-label">Duration (Days)</label>
+                        <input type="number" class="form-control" id="duration_days" name="duration_days" min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label for="hours_spent" class="form-label">Hours Spent</label>
+                        <input type="number" class="form-control" id="hours_spent" name="hours_spent" min="0" value="0">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Task</button>
+                </form>
+            </div>
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

@@ -48,6 +48,17 @@
         <div class="card mb-4">
             <div class="card-body">
                 <h2>Tasks</h2>
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            {% if category in ['success', 'danger'] %}
+                                <div class="alert alert-{{ category }}" role="alert">
+                                    {{ message }}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
                 <a href="{{ url_for('add_task', project_id=project.id) }}" class="btn btn-primary mb-3">Add Task</a>
                 <div id="task-gantt" class="mb-3"></div>
                 {% if tasks %}
@@ -85,15 +96,6 @@
         <div class="card mb-4">
             <div class="card-body">
                 <h2>Finances</h2>
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ category }}" role="alert">
-                                {{ message }}
-                            </div>
-                        {% endfor %}
-                    {% endif %}
-                {% endwith %}
                 <form method="post" action="{{ url_for('add_finance', project_id=project.id) }}">
                     <div class="mb-3">
                         <label for="type" class="form-label">Type</label>
@@ -154,6 +156,44 @@
                     </table>
                 {% else %}
                     <p>No finance entries yet.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2>Weather Forecast</h2>
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            {% if category in ['warning', 'info'] %}
+                                <div class="alert alert-{{ category }}" role="alert">
+                                    {{ message }}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                {% if weather_data %}
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Temperature (°F)</th>
+                                <th>Condition</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for day in weather_data %}
+                                <tr>
+                                    <td>{{ day.date }}</td>
+                                    <td>{{ day.temp | round(1) }}</td>
+                                    <td>{{ day.condition }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No weather data available.</p>
                 {% endif %}
             </div>
         </div>
