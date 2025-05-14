@@ -423,6 +423,7 @@ def add_task(project_id):
         due_date = request.form.get('due_date') or None
         duration_days = request.form.get('duration_days') or None
         hours_spent = request.form.get('hours_spent') or None
+        scheduler_mode = request.form.get('scheduler_mode')  # Check Scheduler Mode toggle
 
         # Validate dates if provided
         if start_date and due_date:
@@ -440,39 +441,43 @@ def add_task(project_id):
             ''', (project_id, title, assignee, status, start_date, due_date, duration_days, hours_spent))
             conn.commit()
 
-            # Send email notification to assignee if assigned
-            if assignee:
-                cursor.execute('SELECT username, email FROM users WHERE id = ?', (assignee,))
-                assignee_data = cursor.fetchone()
-                if assignee_data:
-                    username, email = assignee_data
-                    if email:
-                        cursor.execute('SELECT name FROM projects WHERE id = ?', (project_id,))
-                        project_name = cursor.fetchone()[0]
-                        subject = f"New Task Assigned: {title}"
-                        body = f"You have been assigned a new task in the LG Asphalt Project Management Platform.\n\n" \
-                               f"Project: {project_name}\n" \
-                               f"Task: {title}\n" \
-                               f"Status: {status}\n" \
-                               f"Start Date: {start_date or 'Not specified'}\n" \
-                               f"Due Date: {due_date or 'Not specified'}\n" \
-                               f"Duration: {duration_days or 'Not specified'} days\n" \
-                               f"Hours Spent: {hours_spent or '0'} hours\n\n" \
-                               f"Please log in to the platform to view details: http://127.0.0.1:5000/login"
-                        print(f"Sending email to {email} for task {title}")
-                        if send_email(email, subject, body):
-                            flash('Task added successfully!', 'success')
-                        else:
-                            flash('Task added successfully, but failed to send email notification.', 'success')
-                    else:
-                        print(f"Assignee {username} (ID {assignee}) has no email address")
-                        flash('Task added successfully, but assignee has no email for notification.', 'success')
-                else:
-                    print(f"No user found for assignee ID {assignee}")
-                    flash('Task added successfully, but assignee not found for email notification.', 'success')
+            # Send email notification to assignee if assigned and Scheduler Mode is off
+            if scheduler_mode == 'on':
+                print("Scheduler Mode is on: Scheduling privately, skipping email notification")
+                flash('Task added successfully! (Scheduled privately, no email sent)', 'success')
             else:
-                print("No assignee selected for task")
-                flash('Task added successfully, but no assignee selected for email notification.', 'success')
+                if assignee:
+                    cursor.execute('SELECT username, email FROM users WHERE id = ?', (assignee,))
+                    assignee_data = cursor.fetchone()
+                    if assignee_data:
+                        username, email = assignee_data
+                        if email:
+                            cursor.execute('SELECT name FROM projects WHERE id = ?', (project_id,))
+                            project_name = cursor.fetchone()[0]
+                            subject = f"New Task Assigned: {title}"
+                            body = f"You have been assigned a new task in the LG Asphalt Project Management Platform.\n\n" \
+                                   f"Project: {project_name}\n" \
+                                   f"Task: {title}\n" \
+                                   f"Status: {status}\n" \
+                                   f"Start Date: {start_date or 'Not specified'}\n" \
+                                   f"Due Date: {due_date or 'Not specified'}\n" \
+                                   f"Duration: {duration_days or 'Not specified'} days\n" \
+                                   f"Hours Spent: {hours_spent or '0'} hours\n\n" \
+                                   f"Please log in to the platform to view details: http://127.0.0.1:5000/login"
+                            print(f"Sending email to {email} for task {title}")
+                            if send_email(email, subject, body):
+                                flash('Task added successfully!', 'success')
+                            else:
+                                flash('Task added successfully, but failed to send email notification.', 'success')
+                        else:
+                            print(f"Assignee {username} (ID {assignee}) has no email address")
+                            flash('Task added successfully, but assignee has no email for notification.', 'success')
+                    else:
+                        print(f"No user found for assignee ID {assignee}")
+                        flash('Task added successfully, but assignee not found for email notification.', 'success')
+                else:
+                    print("No assignee selected for task")
+                    flash('Task added successfully, but no assignee selected for email notification.', 'success')
 
             return redirect(url_for('project', project_id=project_id))
         except Exception as e:
