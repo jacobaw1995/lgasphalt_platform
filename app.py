@@ -288,6 +288,29 @@ def project(project_id=None):
     cursor.execute('SELECT id, filename, description, upload_date FROM photos WHERE project_id = ?', (project_id,))
     photos = [{'id': p[0], 'filename': p[1], 'description': p[2], 'upload_date': p[3]} for p in cursor.fetchall()]
     
+    # Fetch equipment for the project
+    cursor.execute('''
+        SELECT equipment_type, last_maintenance_date, maintenance_schedule_days, status
+        FROM equipment
+        WHERE project_id = ?
+    ''', (project_id,))
+    equipment = cursor.fetchall()
+    equipment_list = []
+    for equip in equipment:
+        last_maintenance = equip[1]
+        schedule_days = equip[2]
+        next_maintenance = 'Not scheduled'
+        if last_maintenance and schedule_days:
+            last_date = datetime.strptime(last_maintenance, '%Y-%m-%d')
+            next_date = last_date + timedelta(days=schedule_days)
+            next_maintenance = next_date.strftime('%Y-%m-%d')
+        equipment_list.append({
+            'equipment_type': equip[0],
+            'last_maintenance_date': last_maintenance,
+            'next_maintenance_date': next_maintenance,
+            'status': equip[3]
+        })
+    
     # Fetch weather data based on project zip code
     weather_data = []
     try:
@@ -384,7 +407,7 @@ def project(project_id=None):
         'hours_spent': t[6],
         'assignee_username': t[7]
     } for t in tasks]
-    return render_template('project.html', project=project_dict, customer=customer_dict, finances=finances_list, tasks=tasks_list, photos=photos, weather_data=weather_data)
+    return render_template('project.html', project=project_dict, customer=customer_dict, finances=finances_list, tasks=tasks_list, photos=photos, weather_data=weather_data, equipment=equipment_list)
 
 @app.route('/project/<int:project_id>/add_finance', methods=['POST'])
 @login_required
@@ -487,40 +510,73 @@ def add_task(project_id):
     conn.close()
     return render_template('add_task.html', users=users, project_id=project_id)
 
-@app.route('/project/<int:project_id>/equipment', methods=['GET', 'POST'])
+@app.route('/project/<int:project_id>/add_equipment', methods=['GET', 'POST'])
 @login_required
-def equipment(project_id):
+def add_equipment(project_id):
+    user_id = getattr(current_user, 'id', None)
+    is_authenticated = current_user.is_authenticated
+    is_customer = getattr(current_user, '_is_customer', False)
+    role = getattr(current_user, 'role', 'unknown')
+    print(f"Add equipment access: user_id={user_id}, is_authenticated={is_authenticated}, is_customer={is_customer}, role={role}")
+
+    if not is_authenticated:
+        print("User not authenticated, redirecting to login")
+        flash('Please log in to access this page.', 'danger')
+        return redirect(url_for('login'))
+
+    conn = sqlite3.connect('crm.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
+    user_data = cursor.fetchone()
+    if user_data:
+        role = user_data[0]
+        print(f"Database role check: user_id={user_id}, role={role}")
+        if role != 'admin':
+            print(f"User {user_id} is not admin, redirecting to pm_dashboard")
+            flash('Access restricted to admins.', 'danger')
+            return redirect(url_for('pm_dashboard'))
+    else:
+        print(f"No user found in database for user_id={user_id}, redirecting to login")
+        flash('User not found. Please log in again.', 'danger')
+        return redirect(url_for('login'))
+    conn.close()
+
+    if is_customer:
+        print(f"User {user_id} is customer, redirecting to customer_portal")
+        flash('Access restricted to admins.', 'danger')
+        return redirect(url_for('customer_portal'))
+
     conn = sqlite3.connect('crm.db')
     cursor = conn.cursor()
     cursor.execute('SELECT id FROM projects WHERE id = ?', (project_id,))
     project = cursor.fetchone()
     if not project:
         conn.close()
+        print(f"Project {project_id} not found, redirecting to pm_dashboard")
         flash('Project not found.', 'danger')
         return redirect(url_for('pm_dashboard'))
 
     if request.method == 'POST':
         name = request.form.get('name')
-        type = request.form.get('type')
+        equipment_type = request.form.get('equipment_type')
         status = request.form.get('status')
-        last_used = request.form.get('last_used') or None
+        last_maintenance_date = request.form.get('last_maintenance_date') or None
+        maintenance_schedule_days = request.form.get('maintenance_schedule_days') or None
         try:
             cursor.execute('''
-                INSERT INTO equipment (project_id, name, type, status, last_used)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (project_id, name, type, status, last_used))
+                INSERT INTO equipment (project_id, name, equipment_type, status, last_maintenance_date, maintenance_schedule_days)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (project_id, name, equipment_type, status, last_maintenance_date, maintenance_schedule_days))
             conn.commit()
             flash('Equipment added successfully!', 'success')
         except Exception as e:
             flash(f'Error adding equipment: {str(e)}', 'danger')
         finally:
             conn.close()
-        return redirect(url_for('equipment', project_id=project_id))
+        return redirect(url_for('project', project_id=project_id))
 
-    cursor.execute('SELECT id, name, type, status, last_used FROM equipment WHERE project_id = ?', (project_id,))
-    equipment = [{'id': e[0], 'name': e[1], 'type': e[2], 'status': e[3], 'last_used': e[4]} for e in cursor.fetchall()]
     conn.close()
-    return render_template('equipment.html', project_id=project_id, equipment=equipment)
+    return render_template('add_equipment.html', project_id=project_id)
 
 @app.route('/project/<int:project_id>/upload_photo', methods=['GET', 'POST'])
 @login_required

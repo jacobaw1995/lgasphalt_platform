@@ -43,7 +43,6 @@
                 <p><strong>Status:</strong> {{ project.status }}</p>
                 <p><strong>Start Date:</strong> {{ project.start_date }}</p>
                 <p><strong>Due Date:</strong> {{ project.end_date }}</p>
-                <a href="{{ url_for('equipment', project_id=project.id) }}" class="btn btn-primary mt-2">Manage Equipment</a>
             </div>
         </div>
         <div class="card mb-4">
@@ -157,6 +156,34 @@
                     </table>
                 {% else %}
                     <p>No finance entries yet.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2>Equipment</h2>
+                <a href="{{ url_for('add_equipment', project_id=project.id) }}" class="btn btn-primary mb-3">Add Equipment</a>
+                {% if equipment %}
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Equipment Type</th>
+                                <th>Last Maintenance</th>
+                                <th>Next Maintenance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in equipment %}
+                                <tr>
+                                    <td>{{ item.equipment_type }}</td>
+                                    <td>{{ item.last_maintenance_date or 'Not specified' }}</td>
+                                    <td>{{ item.next_maintenance_date }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>No equipment added yet.</p>
                 {% endif %}
             </div>
         </div>
