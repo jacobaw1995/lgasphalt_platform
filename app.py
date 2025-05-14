@@ -487,6 +487,41 @@ def add_task(project_id):
     conn.close()
     return render_template('add_task.html', users=users, project_id=project_id)
 
+@app.route('/project/<int:project_id>/equipment', methods=['GET', 'POST'])
+@login_required
+def equipment(project_id):
+    conn = sqlite3.connect('crm.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM projects WHERE id = ?', (project_id,))
+    project = cursor.fetchone()
+    if not project:
+        conn.close()
+        flash('Project not found.', 'danger')
+        return redirect(url_for('pm_dashboard'))
+
+    if request.method == 'POST':
+        name = request.form.get('name')
+        type = request.form.get('type')
+        status = request.form.get('status')
+        last_used = request.form.get('last_used') or None
+        try:
+            cursor.execute('''
+                INSERT INTO equipment (project_id, name, type, status, last_used)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (project_id, name, type, status, last_used))
+            conn.commit()
+            flash('Equipment added successfully!', 'success')
+        except Exception as e:
+            flash(f'Error adding equipment: {str(e)}', 'danger')
+        finally:
+            conn.close()
+        return redirect(url_for('equipment', project_id=project_id))
+
+    cursor.execute('SELECT id, name, type, status, last_used FROM equipment WHERE project_id = ?', (project_id,))
+    equipment = [{'id': e[0], 'name': e[1], 'type': e[2], 'status': e[3], 'last_used': e[4]} for e in cursor.fetchall()]
+    conn.close()
+    return render_template('equipment.html', project_id=project_id, equipment=equipment)
+
 @app.route('/project/<int:project_id>/upload_photo', methods=['GET', 'POST'])
 @login_required
 def upload_photo(project_id):
